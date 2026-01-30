@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import type { BusinessInfo, Appointment, ChatMessage } from "../types";
-import { sendToBizieChat } from "../services/chatApi";
+import { gemini } from "../services/gemini";
 
 interface Props {
   business: BusinessInfo;
@@ -16,7 +16,7 @@ const ChatWidget: React.FC<Props> = ({ business }) => {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Gemini-format history (server uses it)
+  // Gemini-format history
   const historyRef = useRef<Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>>([
     { role: "model", parts: [{ text: "היי! אני ביזי ✨ איך אפשר לעזור היום?" }] },
   ]);
@@ -36,21 +36,23 @@ const ChatWidget: React.FC<Props> = ({ business }) => {
     historyRef.current.push({ role: "user", parts: [{ text: msg }] });
 
     try {
-      const resp = await sendToBizieChat({
-        message: msg,
-        history: historyRef.current,
-        business,
-      });
+      // Call Gemini service
+      const response = await gemini.sendMessage(historyRef.current, business);
+      
+      // Extract text from response
+      const replyText = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || "מצטערת, לא הצלחתי להבין.";
 
-      setMessages((prev) => [...prev, { role: "model", text: resp.reply, timestamp: new Date() }]);
-      historyRef.current.push({ role: "model", parts: [{ text: resp.reply }] });
+      setMessages((prev) => [...prev, { role: "model", text: replyText, timestamp: new Date() }]);
+      historyRef.current.push({ role: "model", parts: [{ text: replyText }] });
     } catch (e) {
+      console.error("Chat error:", e);
       setMessages((prev) => [
         ...prev,
         { role: "model", text: "סליחה, הייתה תקלה רגעית. נסה שוב בעוד רגע 🙏", timestamp: new Date() },
       ]);
     } finally {
       setIsLoading(false);
+      setInput("");
     }
   }
 
@@ -59,7 +61,7 @@ const ChatWidget: React.FC<Props> = ({ business }) => {
       <div className="bg-indigo-950 text-white p-5 flex items-center justify-between">
         <div>
           <div className="font-black text-lg leading-none">ביזי</div>
-          <div className="text-indigo-200 text-xs font-bold mt-1">Flow-first + AI fallback</div>
+          <div className="text-indigo-200 text-xs font-bold mt-1">AI Assistant</div>
         </div>
       </div>
 
@@ -95,7 +97,7 @@ const ChatWidget: React.FC<Props> = ({ business }) => {
               key={s}
               onClick={() => send(s)}
               disabled={isLoading}
-              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold text-slate-600 hover:border-indigo-500 hover:text-indigo-700"
+              className="px-3 py-2 rounded-2xl border border-slate-200 text-xs font-bold text-slate-600 hover:border-indigo-500 hover:text-indigo-700 disabled:opacity-50"
             >
               {s}
             </button>
