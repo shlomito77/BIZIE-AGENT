@@ -1,0 +1,11 @@
+{
+    "name": "Bizie Massage",
+    "phone": "050-0000000",
+    "address": "תל אביב",
+    "hours": "א-ה 09:00-18:00",
+    "services": [
+      { "name": "עיסוי שוודי", "price": 250, "duration": 60 }
+    ],
+    "policies": "ביטול עד 24 שעות"
+  }
+  

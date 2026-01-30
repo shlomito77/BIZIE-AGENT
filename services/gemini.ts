@@ -71,7 +71,8 @@
 
     async *sendMessageStream(contents: any[], business: BusinessInfo) {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const result = await ai.models.generateContentStream({
+      const result = await ai.mode
+      ls.generateContentStream({
         model: business.aiModel || this.defaultModel,
         contents: contents.length > 8 ? contents.slice(-8) : contents,
         config: {

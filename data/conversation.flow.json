@@ -1,0 +1,139 @@
+{
+    "version": "bizie-flow-v1-2026-01-30",
+    "initialState": "INTRO",
+    "states": {
+      "INTRO": {
+        "type": "static",
+        "botText": "היי 😊\nנעים מאוד, אני ביזי ✨\nאשמח לעזור לך ולהתאים טיפול עיסוי שמתאים בדיוק למה שאתה צריך.\nאצלנו יש מגוון טיפולי עיסוי – להרגעה, לשחרור עומסים ולטיפול ממוקד.\nאפשר לכתוב לי במלל חופשי,\nאו לבחור אחת מהאפשרויות למטה כדי שיהיה פשוט ונוח 💬\nלפני שנתחיל, אשמח לדעת איך קוראים לך 🌿",
+        "next": "ASK_NAME"
+      },
+  
+      "ASK_NAME": {
+        "type": "collect_text",
+        "key": "name",
+        "botText": "איך קוראים לך? 🌿",
+        "next": "SHOW_TREATMENTS"
+      },
+  
+      "SHOW_TREATMENTS": {
+        "type": "menu_dynamic_services",
+        "botText": "איזה כיף, {name} 🌿\nהנה הטיפולים שלנו — אפשר לבחור מספר או לשאול שאלה:",
+        "bubbles": ["יש לי שאלה"],
+        "onSelectNumber": {
+          "next": "CHOOSE_TREATMENT",
+          "set": { "treatmentIndex": "{selectedNumber}" }
+        },
+        "onSelectText": {
+          "matches": [
+            { "text": "יש לי שאלה", "next": "FREE_QUESTION" }
+          ],
+          "fallback": { "next": "SHOW_TREATMENTS" }
+        }
+      },
+  
+      "CHOOSE_TREATMENT": {
+        "type": "show_treatment_then_next",
+        "botText": "בחירה מצוינת, {name} 🌿\n{treatment.description}\n\nאיזה משך טיפול מתאים לך?",
+        "next": "CHOOSE_DURATION",
+        "bubbles": ["45 דקות", "60 דקות", "90 דקות", "לשנות טיפול"]
+      },
+  
+      "CHOOSE_DURATION": {
+        "type": "duration_with_prices",
+        "botText": "מעולה 😊 הנה האפשרויות (כולל מחיר):\n1) 45 דקות — ₪{price45}\n2) 60 דקות — ₪{price60}\n3) 90 דקות — ₪{price90}\n\nמה נוח לך לבחור?",
+        "bubbles": ["45 דקות", "60 דקות", "90 דקות", "לשנות טיפול"],
+        "transitions": [
+          { "when": "bubble", "is": "45 דקות", "set": { "duration": 45 }, "next": "POST_PRICE_OPTIONS" },
+          { "when": "bubble", "is": "60 דקות", "set": { "duration": 60 }, "next": "POST_PRICE_OPTIONS" },
+          { "when": "bubble", "is": "90 דקות", "set": { "duration": 90 }, "next": "POST_PRICE_OPTIONS" },
+          { "when": "bubble", "is": "לשנות טיפול", "next": "SHOW_TREATMENTS" }
+        ]
+      },
+  
+      "POST_PRICE_OPTIONS": {
+        "type": "menu",
+        "botText": "מעולה 😊\nרוצה שאבדוק זמינות לתור,\nאו שיש עוד משהו שתרצה לשאול לפני?",
+        "bubbles": ["בדיקת זמינות", "יש לי שאלה", "לשנות משך טיפול"],
+        "transitions": [
+          { "when": "bubble", "is": "בדיקת זמינות", "next": "ASK_DATE_TIME_PREF" },
+          { "when": "bubble", "is": "יש לי שאלה", "next": "FREE_QUESTION" },
+          { "when": "bubble", "is": "לשנות משך טיפול", "next": "CHOOSE_DURATION" }
+        ]
+      },
+  
+      "ASK_DATE_TIME_PREF": {
+        "type": "menu_or_text",
+        "botText": "בכיף 🌿\nיש תאריך ושעה מועדפים?\nאפשר לבחור מהבועות או לכתוב חופשי.",
+        "bubbles": ["היום", "מחר", "השבוע", "אין העדפה", "לכתוב תאריך ושעה"],
+        "transitions": [
+          { "when": "bubble", "is": "היום", "set": { "dateTimeOrPreference": "היום" }, "next": "CONFIRM_BOOKING_NAME" },
+          { "when": "bubble", "is": "מחר", "set": { "dateTimeOrPreference": "מחר" }, "next": "CONFIRM_BOOKING_NAME" },
+          { "when": "bubble", "is": "השבוע", "set": { "dateTimeOrPreference": "השבוע" }, "next": "CONFIRM_BOOKING_NAME" },
+          { "when": "bubble", "is": "אין העדפה", "set": { "dateTimeOrPreference": "אין העדפה" }, "next": "CONFIRM_BOOKING_NAME" },
+          { "when": "bubble", "is": "לכתוב תאריך ושעה", "next": "COLLECT_DATE_TIME" }
+        ],
+        "next": "COLLECT_DATE_TIME"
+      },
+  
+      "COLLECT_DATE_TIME": {
+        "type": "collect_text_optional",
+        "key": "dateTimeOrPreference",
+        "botText": "מעולה 😊 כתוב לי תאריך ושעה מועדפים (למשל: \"מחר 18:30\" / \"ראשון בבוקר\").",
+        "next": "CONFIRM_BOOKING_NAME"
+      },
+  
+      "CONFIRM_BOOKING_NAME": {
+        "type": "confirm",
+        "botText": "מעולה, שריינתי עבורך טיפול 🌿\nרק לפני סגירה — הטיפול הוא על שם {name}, נכון?",
+        "bubbles": ["כן", "לא (לעדכן שם)"],
+        "transitions": [
+          { "when": "bubble", "is": "כן", "next": "SUMMARY" },
+          { "when": "bubble", "is": "לא (לעדכן שם)", "next": "UPDATE_NAME" }
+        ]
+      },
+  
+      "UPDATE_NAME": {
+        "type": "collect_text",
+        "key": "name",
+        "botText": "בטח 😊 איך תרצה שאקרא לך?",
+        "next": "SUMMARY"
+      },
+  
+      "SUMMARY": {
+        "type": "final_menu",
+        "botText": "סיכום התור שלך 🌿\n👤 שם: {name}\n💆 טיפול: {treatmentName}\n⏱️ משך: {duration} דקות\n📅 תאריך/שעה: {dateTimeOrPreference}\n📍 כתובת: {address}\n\nמדיניות שינוי/ביטול:\n{policies}\n\nאם תרצה לבטל או לשנות — פשוט כתוב לי כאן “לבטל תור” או “לשנות תור” ואני אעזור 😊",
+        "bubbles": ["לבטל תור", "לשנות תור", "יש לי שאלה", "סיום"],
+        "transitions": [
+          { "when": "bubble", "is": "לבטל תור", "next": "CANCEL_FLOW" },
+          { "when": "bubble", "is": "לשנות תור", "next": "RESCHEDULE_FLOW" },
+          { "when": "bubble", "is": "יש לי שאלה", "next": "FREE_QUESTION" },
+          { "when": "bubble", "is": "סיום", "next": "END" }
+        ]
+      },
+  
+      "FREE_QUESTION": {
+        "type": "ai_optional",
+        "botText": "בשמחה 😊 מה תרצה לשאול?",
+        "next": "POST_PRICE_OPTIONS",
+        "guardFlowFirst": true
+      },
+  
+      "CANCEL_FLOW": {
+        "type": "static",
+        "botText": "אין בעיה 🌿 כדי לבטל — כתוב לי בבקשה את התאריך והשעה של התור, ואני מבטלת עבורך.",
+        "next": "END"
+      },
+  
+      "RESCHEDULE_FLOW": {
+        "type": "static",
+        "botText": "בטח 😊 איזה תאריך ושעה חדשים נוחים לך? אפשר גם לציין טווח ימים/שעות.",
+        "next": "END"
+      },
+  
+      "END": {
+        "type": "end",
+        "botText": "כיף לדבר איתך 🌿 אם תרצה עוד משהו — אני כאן."
+      }
+    }
+  }
+  
