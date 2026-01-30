@@ -1,0 +1,7 @@
+{
+  "name": "Copy of Bizie - AI Business Sidekick",
+  "description": "A personal AI secretary for small businesses and solo entrepreneurs, handling FAQs, service explanations, and automated scheduling.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
