@@ -1,19 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { SocialMessage, Customer, ChatMessage, BusinessInfo } from '../types';
-import { Instagram, Facebook, MessageCircle, Send, Loader2, Clock, ArrowRight, Activity, Smartphone, Phone, CheckCircle2 } from 'lucide-react';
-import { gemini } from '../services/gemini';
-import { calendarService } from '../services/googleCalendar';
+import { SocialMessage } from '../types';
+import { Instagram, Facebook, MessageCircle, Send, Loader2, Clock, ArrowRight, Activity } from 'lucide-react';
+import { sendSocialMessage } from '../services/dataApi';
 
 interface Props {
   messages: SocialMessage[];
-  business: BusinessInfo;
-  onConvertLead: (customer: Partial<Customer>) => void;
   onUpdateMessages: (msgs: SocialMessage[]) => void;
-  onCancelAppointment: (phone: string) => void;
+  onSyncData?: () => void;
 }
 
-const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpdateMessages, onCancelAppointment }) => {
+const SocialInbox: React.FC<Props> = ({ messages, onUpdateMessages, onSyncData }) => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'unprocessed'>('unprocessed');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +31,7 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
     // Update local state first (User message)
     const updatedMessages = [...messages];
     const chatIndex = updatedMessages.findIndex(m => m.id === activeChatId);
+    if (chatIndex === -1) return;
     updatedMessages[chatIndex] = {
       ...updatedMessages[chatIndex],
       chatHistory: [...updatedMessages[chatIndex].chatHistory, { role: 'user', text: textToSend, timestamp: new Date() }]
@@ -43,60 +41,21 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
     setIsLoading(true);
 
     try {
-      const currentChat = updatedMessages[chatIndex];
-      const historyForGemini = currentChat.chatHistory.map(h => ({
-        role: h.role,
-        parts: [{ text: h.text }]
-      }));
+      setActionStatus("מייצרת תשובה...");
+      const result = await sendSocialMessage({
+        threadId: activeChatId,
+        message: textToSend,
+      });
 
-      // 1. Unified Logic Processing (Same as ChatWidget)
-      // Fix: Removed the extra platform argument as it's not supported by GeminiService.sendMessage
-      const actionResponse = await gemini.sendMessage(historyForGemini, business);
-      
-      if (actionResponse.functionCalls && actionResponse.functionCalls.length > 0) {
-        const toolResultsParts: any[] = [];
-        historyForGemini.push(actionResponse.candidates[0].content);
-        
-        for (const fc of actionResponse.functionCalls) {
-          setActionStatus(`מבצעת: ${fc.name === 'book_appointment' ? 'קביעת תור' : fc.name === 'cancel_appointment' ? 'ביטול תור' : 'בדיקת זמינות'}...`);
-          let result: any = { status: "ok" };
-          
-          if (fc.name === 'check_availability') {
-            const res = await calendarService.checkAvailability((fc.args as any).dateTime, 60);
-            result = { available: res };
-          } else if (fc.name === 'book_appointment') {
-            onConvertLead({ 
-              name: (fc.args as any).customerName, 
-              phone: (fc.args as any).customerPhone, 
-              source: currentChat.platform,
-              notes: `נקבע דרך ${currentChat.platform}`
-            });
-            result = { success: true };
-          } else if (fc.name === 'cancel_appointment') {
-            onCancelAppointment((fc.args as any).customerPhone);
-            result = { cancelled: true };
-          }
-          toolResultsParts.push({ functionResponse: { id: fc.id, name: fc.name, response: { result } } });
-        }
-        historyForGemini.push({ role: 'user', parts: toolResultsParts });
+      const latestMsgs = [...updatedMessages];
+      const idx = latestMsgs.findIndex(m => m.id === result.thread.id);
+      if (idx !== -1) {
+        latestMsgs[idx] = result.thread;
       }
+      onUpdateMessages(latestMsgs);
 
-      // 2. Stream Response (Same behavior across platforms)
-      setActionStatus(null);
-      let fullResponseText = "";
-      // Fix: Removed the extra platform argument as it's not supported by GeminiService.sendMessageStream
-      const stream = gemini.sendMessageStream(historyForGemini, business);
-      
-      const botMsgTimestamp = new Date();
-      updatedMessages[chatIndex].chatHistory.push({ role: 'model', text: '', timestamp: botMsgTimestamp });
-      onUpdateMessages([...updatedMessages]);
-
-      for await (const chunk of stream) {
-        fullResponseText += chunk;
-        const latestMsgs = [...updatedMessages];
-        const lastIdx = latestMsgs[chatIndex].chatHistory.length - 1;
-        latestMsgs[chatIndex].chatHistory[lastIdx] = { role: 'model', text: fullResponseText, timestamp: botMsgTimestamp };
-        onUpdateMessages(latestMsgs);
+      if (result.actions?.length && onSyncData) {
+        onSyncData();
       }
 
     } catch (e: any) {
@@ -125,6 +84,7 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
       case 'facebook': return { icon: <Facebook className="w-5 h-5" />, color: 'bg-blue-600', text: 'text-blue-600' };
       case 'tiktok': return { icon: <div className="font-black text-[10px]">T</div>, color: 'bg-black', text: 'text-slate-900' };
       case 'whatsapp': return { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-green-500', text: 'text-green-600' };
+      case 'telegram': return { icon: <Send className="w-5 h-5" />, color: 'bg-sky-500', text: 'text-sky-600' };
       default: return { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-slate-500', text: 'text-slate-500' };
     }
   };

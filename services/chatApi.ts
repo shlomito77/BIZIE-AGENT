@@ -1,3 +1,5 @@
+import { apiFetch } from "./apiClient";
+
 export type ChatResponse = {
   reply: string;
   bubbles?: string[];
@@ -19,20 +21,16 @@ function getSessionId() {
 
 export async function sendChatMessage(message: string): Promise<ChatResponse> {
   const sessionId = getSessionId();
-  const res = await fetch("/api/chat", {
+  return apiFetch<ChatResponse>("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, sessionId }),
   });
-  return res.json();
 }
 
 export async function sendChatBubble(bubble: string): Promise<ChatResponse> {
   const sessionId = getSessionId();
-  const res = await fetch("/api/chat", {
+  return apiFetch<ChatResponse>("/api/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ bubble, sessionId }),
   });
-  return res.json();
 }

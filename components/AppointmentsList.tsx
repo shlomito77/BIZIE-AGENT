@@ -33,6 +33,10 @@ const AppointmentsList: React.FC<Props> = ({ appointments, services, onAddAppoin
     return services.find(s => s.id === formData.serviceId);
   }, [services, formData.serviceId]);
 
+  const sortedAppointments = useMemo(() => {
+    return [...appointments].sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+  }, [appointments]);
+
   // לוגיקת ולידציה בזמן אמת - אדום מיידי אם לא תקין
   const phoneValidation = useMemo(() => {
     const val = formData.customerPhone;
@@ -272,9 +276,15 @@ const AppointmentsList: React.FC<Props> = ({ appointments, services, onAddAppoin
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {appointments.length > 0 ? (
-                appointments.sort((a,b) => b.startTime.getTime() - a.startTime.getTime()).map((app) => {
+              {sortedAppointments.length > 0 ? (
+                sortedAppointments.map((app) => {
                   const service = services.find(s => s.id === app.serviceId);
+                  const statusLabel = app.status === 'cancelled' ? 'מבוטל' : app.status === 'pending' ? 'ממתין' : 'מאושר';
+                  const statusClass = app.status === 'cancelled'
+                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                    : app.status === 'pending'
+                      ? 'bg-amber-50 text-amber-700 border-amber-100'
+                      : 'bg-green-50 text-green-700 border-green-100';
                   return (
                     <tr key={app.id} className="hover:bg-slate-50/50 transition-colors group">
                       <td className="p-6">
@@ -303,9 +313,9 @@ const AppointmentsList: React.FC<Props> = ({ appointments, services, onAddAppoin
                         <div className="text-[10px] text-slate-400 font-black mt-0.5 tracking-tight">₪{service?.price || 0} | {service?.duration || 60} דק׳</div>
                       </td>
                       <td className="p-6 text-center">
-                         <div className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-4 py-1.5 rounded-full text-[10px] font-black border border-green-100 shadow-sm">
+                         <div className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[10px] font-black border shadow-sm ${statusClass}`}>
                             <CheckCircle2 className="w-3.5 h-3.5" />
-                            מאושר
+                            {statusLabel}
                           </div>
                       </td>
                       <td className="p-6 text-left">

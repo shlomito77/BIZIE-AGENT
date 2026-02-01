@@ -6,7 +6,7 @@ import { calendarService } from '../services/googleCalendar';
 
 interface Props {
   business: BusinessInfo;
-  onUpdate: (info: BusinessInfo) => void;
+  onUpdate: (info: BusinessInfo) => Promise<void> | void;
   onConnectCalendar: () => void;
 }
 
@@ -31,6 +31,10 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
   const [showTechFaq, setShowTechFaq] = useState(false);
   const [connectedEmail, setConnectedEmail] = useState<string | null>(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
+
+  useEffect(() => {
+    setFormData(business);
+  }, [business]);
   
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(() => {
     return DAYS_OF_WEEK.map(day => ({
@@ -52,16 +56,16 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
     const scheduleString = weeklySchedule.filter(d => d.isOpen).map(d => `${d.day}: ${d.start}-${d.end}`).join(', ');
     const updatedData = { ...formData, openingHours: scheduleString };
-    localStorage.setItem('bizie_services_v1', JSON.stringify(updatedData.services));
-    setTimeout(() => {
-      onUpdate(updatedData);
-      setIsSaving(false);
+    try {
+      await Promise.resolve(onUpdate(updatedData));
       alert('השינויים נשמרו! ביזי מעודכנת ומחכה ללקוחות.');
-    }, 800);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleLinkCalendar = async () => {

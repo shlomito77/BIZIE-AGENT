@@ -32,7 +32,8 @@ export interface Appointment {
 
 export interface SocialMessage {
   id: string;
-  platform: 'instagram' | 'facebook' | 'tiktok' | 'whatsapp';
+  platform: 'instagram' | 'facebook' | 'tiktok' | 'whatsapp' | 'telegram';
+  externalId?: string;
   senderName: string;
   text: string;
   timestamp: Date;
@@ -53,7 +54,7 @@ export interface Customer {
   totalSpent: number;
   notes: string;
   preferences: string[];
-  source: 'manual' | 'ai' | 'google' | 'facebook' | 'instagram' | 'tiktok' | 'whatsapp';
+  source: 'manual' | 'ai' | 'google' | 'facebook' | 'instagram' | 'tiktok' | 'whatsapp' | 'telegram';
   marketingConsent: boolean;
 }
 

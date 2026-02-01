@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import type { BusinessInfo, Appointment, ChatMessage } from "../types";
-import { gemini } from "../services/gemini";
+import type { BusinessInfo, ChatMessage } from "../types";
+import { secureGemini } from "../services/geminiSecure";
 
 interface Props {
   business: BusinessInfo;
-  appointments: Appointment[];
-  onBook: (app: Omit<Appointment, "id">) => void;
-  onCancel: (id: string) => void;
+  onSyncData?: () => void;
 }
 
-const ChatWidget: React.FC<Props> = ({ business }) => {
+const ChatWidget: React.FC<Props> = ({ business, onSyncData }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: "model", text: "היי! אני ביזי ✨ איך אפשר לעזור היום?", timestamp: new Date() },
   ]);
@@ -37,13 +35,16 @@ const ChatWidget: React.FC<Props> = ({ business }) => {
 
     try {
       // Call Gemini service
-      const response = await gemini.sendMessage(historyRef.current, business);
+      const response = await secureGemini.sendMessage(historyRef.current, business);
       
       // Extract text from response
-      const replyText = response.text || response.candidates?.[0]?.content?.parts?.[0]?.text || "מצטערת, לא הצלחתי להבין.";
+      const replyText = response.text || "מצטערת, לא הצלחתי להבין.";
 
       setMessages((prev) => [...prev, { role: "model", text: replyText, timestamp: new Date() }]);
       historyRef.current.push({ role: "model", parts: [{ text: replyText }] });
+      if (response.actions?.length && onSyncData) {
+        onSyncData();
+      }
     } catch (e) {
       console.error("Chat error:", e);
       setMessages((prev) => [

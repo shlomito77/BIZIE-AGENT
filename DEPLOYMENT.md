@@ -55,7 +55,13 @@ Go to your Vercel dashboard:
 | Name | Value | Environment |
 |------|-------|-------------|
 | `GEMINI_API_KEY` | Your Gemini API key | Production, Preview, Development |
-| `ALLOWED_ORIGIN` | Your domain (e.g., `https://bizie.vercel.app`) | Production, Preview, Development |
+| `POSTGRES_URL` | Postgres connection string | Production, Preview, Development |
+| `ALLOWED_ORIGINS` | Comma-separated domains (e.g., `https://bizie.vercel.app`) | Production, Preview, Development |
+| `BASIC_AUTH_USER` | Admin username | Production, Preview, Development |
+| `BASIC_AUTH_PASS` | Admin password | Production, Preview, Development |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | Production, Preview, Development |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated Chat IDs | Production, Preview, Development |
+| `TELEGRAM_SECRET_TOKEN` | Telegram webhook secret token | Production, Preview, Development |
 
 ### Step 5: Redeploy
 
@@ -115,7 +121,7 @@ This will:
 - Check API key has correct permissions
 
 ### CORS errors
-- Verify `ALLOWED_ORIGIN` matches your frontend URL
+- Verify `ALLOWED_ORIGINS` matches your frontend URL
 - Check `vercel.json` CORS configuration
 
 ### Rate limit errors
