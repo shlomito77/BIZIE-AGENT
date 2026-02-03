@@ -76,6 +76,15 @@ Go to your Vercel dashboard:
 vercel --prod
 ```
 
+## PWA Install (Optional)
+
+After deploy, open the app URL on device:
+
+- **Android (Chrome)**: Menu -> Install app
+- **iOS (Safari)**: Share -> Add to Home Screen
+
+PWA requires HTTPS and a public URL (Vercel provides both).
+
 ### Step 6: Update Frontend Code
 
 If using the old `gemini.ts`, replace imports:

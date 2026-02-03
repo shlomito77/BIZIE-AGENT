@@ -1,6 +1,7 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import AuthGate from './components/AuthGate';
 import { initMonitoring } from './services/monitoring';
@@ -11,6 +12,7 @@ if (!rootElement) {
 }
 
 initMonitoring();
+registerSW({ immediate: true });
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(
