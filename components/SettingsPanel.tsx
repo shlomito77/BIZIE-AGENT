@@ -23,8 +23,12 @@ const DEFAULT_CLIENT_ID = "859360581054-8r4ujbe3prfv5n7cj4gt9buhadbskd7s.apps.go
 const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar }) => {
   const [activeTab, setActiveTab] = useState<'business' | 'schedule' | 'ai'>('business');
   const [formData, setFormData] = useState<BusinessInfo>(business);
-  const [clientId, setClientId] = useState(localStorage.getItem('bizie_google_client_id') || DEFAULT_CLIENT_ID);
-  const [calendarMode, setCalendarMode] = useState<'virtual' | 'real'>(calendarService.getMode());
+  const [clientId, setClientId] = useState(
+    business.googleClientId || localStorage.getItem('bizie_google_client_id') || DEFAULT_CLIENT_ID
+  );
+  const [calendarMode, setCalendarMode] = useState<'virtual' | 'real'>(
+    business.calendarMode || calendarService.getMode()
+  );
   const [isLinking, setIsLinking] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showOAuthHelp, setShowOAuthHelp] = useState(false);
@@ -34,6 +38,8 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
 
   useEffect(() => {
     setFormData(business);
+    setClientId(business.googleClientId || localStorage.getItem('bizie_google_client_id') || DEFAULT_CLIENT_ID);
+    setCalendarMode(business.calendarMode || calendarService.getMode());
   }, [business]);
   
   const [weeklySchedule, setWeeklySchedule] = useState<DaySchedule[]>(() => {
@@ -48,7 +54,7 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
   const toggleMode = (mode: 'virtual' | 'real') => {
     calendarService.setMode(mode);
     setCalendarMode(mode);
-    setFormData(prev => ({ ...prev, isCalendarConnected: mode === 'real' }));
+    setFormData(prev => ({ ...prev, isCalendarConnected: mode === 'real', calendarMode: mode }));
     if (mode === 'virtual') {
       calendarService.disconnect();
       setConnectedEmail(null);
@@ -59,7 +65,12 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
   const handleSave = async () => {
     setIsSaving(true);
     const scheduleString = weeklySchedule.filter(d => d.isOpen).map(d => `${d.day}: ${d.start}-${d.end}`).join(', ');
-    const updatedData = { ...formData, openingHours: scheduleString };
+    const updatedData = {
+      ...formData,
+      openingHours: scheduleString,
+      googleClientId: clientId,
+      calendarMode
+    };
     try {
       await Promise.resolve(onUpdate(updatedData));
       alert('השינויים נשמרו! ביזי מעודכנת ומחכה ללקוחות.');
@@ -315,7 +326,11 @@ const SettingsPanel: React.FC<Props> = ({ business, onUpdate, onConnectCalendar 
                       <input 
                         className="w-full px-4 py-2 bg-indigo-800/50 border border-indigo-700 rounded-lg text-[10px] text-white outline-none focus:border-indigo-500 font-mono"
                         value={clientId}
-                        onChange={(e) => setClientId(e.target.value)}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setClientId(next);
+                          setFormData(prev => ({ ...prev, googleClientId: next }));
+                        }}
                         placeholder="הכנס כאן את ה-Client ID מה-Console"
                       />
                     </div>

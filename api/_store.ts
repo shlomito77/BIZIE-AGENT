@@ -10,6 +10,10 @@ import type {
   SocialMessage,
 } from "../types";
 
+type SettingRow = {
+  value: any;
+};
+
 type AppointmentRow = {
   id: string;
   customer_name: string;
@@ -60,9 +64,20 @@ function getSql() {
   return sqlClient;
 }
 
+function readJsonFile<T>(relativePath: string): T | null {
+  try {
+    const p = path.join(process.cwd(), relativePath);
+    if (!fs.existsSync(p)) return null;
+    const raw = fs.readFileSync(p, "utf8");
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 function readBusinessFallback(): BusinessInfo {
-  const p = path.join(process.cwd(), "data", "business.json");
-  if (!fs.existsSync(p)) {
+  const parsed = readJsonFile<any>("data/business.json");
+  if (!parsed || typeof parsed !== "object") {
     return {
       name: "Bizie",
       ownerName: "Owner",
@@ -73,10 +88,11 @@ function readBusinessFallback(): BusinessInfo {
       openingHours: "",
       isCalendarConnected: false,
       aiModel: "gemini-flash-lite-latest",
+      policies: "",
+      calendarMode: "virtual",
+      googleClientId: "",
     };
   }
-  const raw = fs.readFileSync(p, "utf8");
-  const parsed = JSON.parse(raw);
   const services = (parsed.services || []).map((s: any) => ({
     id: s.id || crypto.randomUUID(),
     name: s.name || "Service",
@@ -94,6 +110,9 @@ function readBusinessFallback(): BusinessInfo {
     openingHours: parsed.hours || parsed.openingHours || "",
     isCalendarConnected: false,
     aiModel: "gemini-flash-lite-latest",
+    policies: parsed.policies || "",
+    calendarMode: parsed.calendarMode || "virtual",
+    googleClientId: parsed.googleClientId || "",
   };
 }
 
@@ -109,6 +128,9 @@ function normalizeBusiness(business: BusinessInfo): BusinessInfo {
     ...business,
     services,
     aiModel: business.aiModel || "gemini-flash-lite-latest",
+    calendarMode: business.calendarMode || "virtual",
+    googleClientId: business.googleClientId || "",
+    policies: business.policies || "",
   };
 }
 
@@ -193,21 +215,61 @@ export async function ensureSchema(): Promise<void> {
   `;
 }
 
-export async function getBusiness(): Promise<BusinessInfo> {
+export async function getSetting<T>(key: string): Promise<T | null> {
   const sql = getSql();
   await ensureSchema();
-  const rows = await sql`
+  const rows = await sql<SettingRow[]>`
     SELECT value
     FROM settings
-    WHERE key = 'business'
+    WHERE key = ${key}
     LIMIT 1;
   `;
-  if (rows.length === 0) {
+  if (rows.length === 0) return null;
+  return rows[0].value as T;
+}
+
+export async function saveSetting<T>(key: string, value: T): Promise<T> {
+  const sql = getSql();
+  await ensureSchema();
+  await sql`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (${key}, ${JSON.stringify(value)}::jsonb, now())
+    ON CONFLICT (key)
+    DO UPDATE SET value = EXCLUDED.value, updated_at = now();
+  `;
+  return value;
+}
+
+export async function getConversationFlow(): Promise<any | null> {
+  const existing = await getSetting<any>("conversation_flow");
+  if (existing) return existing;
+  const fallback = readJsonFile<any>("data/conversation.flow.json");
+  if (fallback) {
+    await saveSetting("conversation_flow", fallback);
+    return fallback;
+  }
+  return null;
+}
+
+export async function getAssistantKnowledge(): Promise<any | null> {
+  const existing = await getSetting<any>("assistant_knowledge");
+  if (existing) return existing;
+  const fallback = readJsonFile<any>("data/business.knowledge.json");
+  if (fallback) {
+    await saveSetting("assistant_knowledge", fallback);
+    return fallback;
+  }
+  return null;
+}
+
+export async function getBusiness(): Promise<BusinessInfo> {
+  const existing = await getSetting<BusinessInfo>("business");
+  if (!existing) {
     const fallback = normalizeBusiness(readBusinessFallback());
     await saveBusiness(fallback);
     return fallback;
   }
-  return normalizeBusiness(rows[0].value as BusinessInfo);
+  return normalizeBusiness(existing);
 }
 
 export async function saveBusiness(business: BusinessInfo): Promise<BusinessInfo> {

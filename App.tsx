@@ -27,7 +27,10 @@ const DEFAULT_BUSINESS: BusinessInfo = {
   services: INITIAL_SERVICES,
   openingHours: "א'-ה': 09:00-20:00, ו': 09:00-14:00",
   isCalendarConnected: false,
-  aiModel: 'gemini-flash-lite-latest'
+  aiModel: 'gemini-flash-lite-latest',
+  policies: "",
+  calendarMode: "virtual",
+  googleClientId: ""
 };
 
 const App: React.FC = () => {
@@ -67,6 +70,15 @@ const App: React.FC = () => {
 
     loadAll();
   }, []);
+
+  useEffect(() => {
+    if (business.googleClientId) {
+      calendarService.setClientId(business.googleClientId);
+    }
+    if (business.calendarMode) {
+      calendarService.setMode(business.calendarMode);
+    }
+  }, [business.googleClientId, business.calendarMode]);
 
   const refreshAll = async () => {
     const [apps, custs, socials] = await Promise.all([

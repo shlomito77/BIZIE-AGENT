@@ -18,6 +18,9 @@ export interface BusinessInfo {
   isCalendarConnected: boolean;
   aiModel?: 'gemini-3-flash-preview' | 'gemini-flash-lite-latest';
   lastSyncTime?: Date;
+  policies?: string;
+  googleClientId?: string;
+  calendarMode?: 'virtual' | 'real';
 }
 
 export interface Appointment {
