@@ -18,6 +18,84 @@ export type AiAction =
   | { type: "cancel_appointment"; customerPhone?: string; appointmentId?: string }
   | { type: "check_availability"; available: boolean };
 
+function normalizeText(text: string) {
+  return (text || "").toLowerCase().trim();
+}
+
+function extractLastUserText(contents: any[]): string {
+  for (let i = contents.length - 1; i >= 0; i -= 1) {
+    const item = contents[i];
+    if (item?.role !== "user") continue;
+    const parts = Array.isArray(item?.parts) ? item.parts : [];
+    const text = parts
+      .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+      .filter(Boolean)
+      .join(" ");
+    return text.trim();
+  }
+  return "";
+}
+
+function buildServicesSummary(business: BusinessInfo) {
+  const services = business.services || [];
+  if (services.length === 0) return "";
+  return services
+    .map((s) => `• ${s.name} (${s.duration} דק׳) – ₪${s.price}`)
+    .join("\n");
+}
+
+function getFaqReply(message: string, business: BusinessInfo): string | null {
+  const m = normalizeText(message);
+  if (!m) return null;
+
+  const isHours =
+    m.includes("שעות") ||
+    m.includes("שעות פתיחה") ||
+    m.includes("שעות פעילות") ||
+    m.includes("מתי פתוח") ||
+    m.includes("מתי אתם פתוחים");
+  const isAddress =
+    m.includes("כתובת") || m.includes("איפה") || m.includes("מיקום") || m.includes("איך מגיעים");
+  const isPhone =
+    m.includes("טלפון") ||
+    m.includes("מספר") ||
+    m.includes("להתקשר") ||
+    m.includes("וואטסאפ") ||
+    m.includes("ווטסאפ");
+  const isPrice =
+    m.includes("מחירון") ||
+    m.includes("מחיר") ||
+    m.includes("כמה") ||
+    m.includes("עולה") ||
+    m.includes("תעריף");
+  const isServices = m.includes("טיפולים") || m.includes("שירותים") || m.includes("סוגי");
+
+  if (isAddress) {
+    return business.address
+      ? `הכתובת שלנו: ${business.address}`
+      : "כרגע הכתובת לא מעודכנת במערכת.";
+  }
+
+  if (isHours) {
+    return business.openingHours
+      ? `שעות הפעילות שלנו:\n${business.openingHours}`
+      : "כרגע שעות הפעילות לא מעודכנות במערכת.";
+  }
+
+  if (isPhone) {
+    return business.phone ? `אפשר ליצור קשר כאן:\n${business.phone}` : "כרגע מספר הטלפון לא מעודכן במערכת.";
+  }
+
+  if (isPrice || isServices) {
+    const summary = buildServicesSummary(business);
+    return summary
+      ? `המחירון שלנו:\n${summary}`
+      : "כרגע אין מחירון מעודכן במערכת.";
+  }
+
+  return null;
+}
+
 const bookAppointmentFunctionDeclaration = {
   name: "book_appointment",
   parameters: {
@@ -68,23 +146,32 @@ function buildSystemInstruction(business: BusinessInfo): string {
     .join(", ");
 
   return `את ביזי, המזכירה האוטומטית של "${business.name}". תפקידך: להעביר לקוח במסלול המרה לתור ופתיחת כרטיס CRM.
-את פועלת לפי תסריטים קשיחים בלבד (A-F). אל תאלתרי.
+אל תזכירי "תרחיש", אותיות, או טקסט מערכת.
 
-תרחישים לביצוע:
-- תרחיש A (הלקוח בחר טיפול): "מעולה ✨ [שם הטיפול] זו בחירה מדויקת. שנבדוק זמינות ביומן?"
-- תרחיש B (הלקוח מתלונן על כאב/מתח): "מבינה אותך לגמרי 🙏 לשחרור כזה אני ממליצה על עיסוי רקמות עמוק. שנבדוק מתי יש לי מקום?"
-- תרחיש C (הלקוח מתלבט): "זה בסדר גמור ✨ התחושה היא יותר צורך בהרגעה או בכאב פיזי שצריך לפתור?"
-- תרחיש D (שאלה על עוצמה): "העוצמה תמיד מותאמת אליך - עדין, בינוני או עמוק."
-- תרחיש E (שאלה על מחיר/זמן): "הטיפולים אורכים 45-60 דקות. מחירון: ${servicesStr}."
-- תרחיש F (הלקוח רוצה לחשוב): "בשמחה, קחי את הזמן ✨ פשוט תכתבי לי כשמתאים לך."
+מידע עסקי שחייב להופיע בתשובות כשנשאלים:
+- כתובת: ${business.address || "לא זמין"}
+- טלפון: ${business.phone || "לא זמין"}
+- שעות פעילות: ${business.openingHours || "לא זמין"}
+- מחירון (מזהים ושמות): ${servicesStr || "לא זמין"}
 
-חוקי עבודה (חיסכון ודיוק):
-1. **זיכרון CRM:** לעולם אל תשאלי שם או טלפון אם הלקוח כבר כתב אותם קודם! תשאבי אותם מההיסטוריה.
-2. **איסוף פרטים:** בקשי שם וטלפון רק אחרי שהלקוח אמר "כן" לבדיקת זמינות.
-3. **שדרוג:** הציעי פעם אחת בלבד: "רוצה להוסיף פינוק קרקפת ב-40 ש"ח?" לפני הסגירה.
-4. **סיום:** אחרי הפעלת book_appointment, התשובה חייבת להיות: "בוצע! התור נקבע וכרטיס הלקוח שלך עודכן במערכת 🌿".
+תסריטים מחייבים (בלי להזכיר "תרחיש"):
+- לקוח בחר טיפול: "מעולה ✨ [שם הטיפול] זו בחירה מדויקת. שנבדוק זמינות ביומן?"
+- לקוח מתלונן על כאב/מתח: "מבינה אותך לגמרי 🙏 לשחרור כזה אני ממליצה על עיסוי רקמות עמוק. שנבדוק מתי יש לי מקום?"
+- לקוח מתלבט: "זה בסדר גמור ✨ התחושה היא יותר צורך בהרגעה או בכאב פיזי שצריך לפתור?"
+- שאלה על עוצמה: "העוצמה תמיד מותאמת אליך - עדין, בינוני או עמוק."
+- שאלה על מחיר/זמן: "הטיפולים אורכים 45-60 דקות. מחירון: ${servicesStr}."
+- לקוח רוצה לחשוב: "בשמחה, קחי את הזמן ✨ פשוט תכתבי לי כשמתאים לך."
 
-שפה: עברית חמה, קצרה מאוד (עד 12 מילים למשפט), תכליתית.`;
+כללי זיכרון והתנהגות:
+1. אל תשאלי שם/טלפון אם כבר נכתבו בשיחה.
+2. בקשי שם וטלפון רק אחרי שהלקוח אמר "כן" לבדיקת זמינות.
+3. הצעת שדרוג פעם אחת בלבד: "רוצה להוסיף פינוק קרקפת ב-40 ש"ח?" לפני הסגירה.
+4. אחרי book_appointment התשובה חייבת להיות: "בוצע! התור נקבע וכרטיס הלקוח שלך עודכן במערכת 🌿".
+5. אם נשאלת על כתובת/שעות/טלפון/מחירון – עני ישירות לפי המידע למעלה. אל תגידי "לא יודעת".
+6. אם המשתמש כתב שם טיפול חלקי (למשל "שוודי", "אבנים", "פנים", "VIP/זוגי") תזהי את ה-serviceId המתאים.
+7. אל תבקשי פורמט ISO. פרשי תאריכים ישראליים (למשל 4/2/26 1400, 4.2.2026 14:00) והמירי ל-YYYY-MM-DDTHH:mm:00 בעצמך. אם יש ספק, שאלי שאלה קצרה אחת.
+
+שפה: עברית חמה וקצרה (עד 12 מילים למשפט), תכליתית.`;
 }
 
 function pickServiceDuration(business: BusinessInfo, serviceId?: string) {
@@ -103,6 +190,12 @@ export async function generateAssistantReply(params: {
   mode?: "standard" | "faq";
 }): Promise<{ text: string; actions: AiAction[] }> {
   const { contents, business, mode = "standard" } = params;
+  const lastUserText = extractLastUserText(contents);
+  const faqReply = getFaqReply(lastUserText, business);
+  if (faqReply) {
+    return { text: faqReply, actions: [] };
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY not configured");
@@ -110,7 +203,7 @@ export async function generateAssistantReply(params: {
 
   const ai = new GoogleGenAI({ apiKey });
   const limitedContents =
-    contents.length > 8 ? contents.slice(-8) : contents;
+    contents.length > 16 ? contents.slice(-16) : contents;
   const systemInstruction = buildSystemInstruction(business);
 
   const response = await ai.models.generateContent({
