@@ -8,15 +8,18 @@ interface Props {
 }
 
 const ChatWidget: React.FC<Props> = ({ business, onSyncData }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    { role: "model", text: "היי! אני ביזי ✨ איך אפשר לעזור היום?", timestamp: new Date() },
-  ]);
+  const initialMessage: ChatMessage = {
+    role: "model",
+    text: "היי! אני ביזי ✨ איך אפשר לעזור היום?",
+    timestamp: new Date(),
+  };
+  const [messages, setMessages] = useState<ChatMessage[]>([initialMessage]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   // Gemini-format history
   const historyRef = useRef<Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>>([
-    { role: "model", parts: [{ text: "היי! אני ביזי ✨ איך אפשר לעזור היום?" }] },
+    { role: "model", parts: [{ text: initialMessage.text }] },
   ]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -24,6 +27,13 @@ const ChatWidget: React.FC<Props> = ({ business, onSyncData }) => {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, isLoading]);
+
+  const resetChat = () => {
+    if (!window.confirm("לנקות את השיחה הנוכחית?")) return;
+    setMessages([initialMessage]);
+    historyRef.current = [{ role: "model", parts: [{ text: initialMessage.text }] }];
+    setInput("");
+  };
 
   async function send(text: string) {
     const msg = text.trim();
@@ -64,6 +74,12 @@ const ChatWidget: React.FC<Props> = ({ business, onSyncData }) => {
           <div className="font-black text-lg leading-none">ביזי</div>
           <div className="text-indigo-200 text-xs font-bold mt-1">AI Assistant</div>
         </div>
+        <button
+          onClick={resetChat}
+          className="text-[10px] font-black text-indigo-200 hover:text-white bg-white/10 px-3 py-2 rounded-xl transition-all"
+        >
+          נקה שיחה
+        </button>
       </div>
 
       <div ref={scrollRef} className="h-[60vh] overflow-y-auto p-5 space-y-4 bg-slate-50">

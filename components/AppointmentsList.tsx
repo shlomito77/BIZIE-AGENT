@@ -326,7 +326,21 @@ const AppointmentsList: React.FC<Props> = ({ appointments, services, onAddAppoin
                 })
               ) : (
                 <tr>
-                  <td colSpan={5} className="p-40 text-center text-slate-400 font-black text-xl italic">אין עדיין תורים רשומים.</td>
+                  <td colSpan={5} className="p-16 text-center">
+                    <div className="max-w-md mx-auto bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-8 space-y-4">
+                      <div className="text-slate-500 font-black text-lg">אין עדיין תורים</div>
+                      <p className="text-slate-400 text-sm font-bold">
+                        אפשר להוסיף תור ראשון ולראות את הלו״ז מתמלא.
+                      </p>
+                      <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl font-black hover:bg-indigo-700 transition-all"
+                      >
+                        <Plus className="w-4 h-4" />
+                        הוסף תור ראשון
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>

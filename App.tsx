@@ -9,6 +9,7 @@ import CustomerCRM from './components/CustomerCRM';
 import SocialInbox from './components/SocialInbox';
 import { calendarService } from './services/googleCalendar';
 import { createAppointment, fetchAppointments, fetchBusiness, fetchCustomers, fetchSocialThreads, saveCustomer, updateBusiness, cancelAppointment as cancelAppointmentApi } from './services/dataApi';
+import { clearAuth, getAuthProfile } from './services/auth';
 
 const INITIAL_SERVICES: Service[] = [
   { id: 'm1', name: 'עיסוי שוודי קלאסי', description: 'עיסוי שחרור ודרמטי.', duration: 60, price: 280 },
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [socialMessages, setSocialMessages] = useState<SocialMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const authProfile = getAuthProfile();
 
   useEffect(() => {
     const loadAll = async () => {
@@ -163,6 +165,11 @@ const App: React.FC = () => {
     setBusiness(updated);
   };
 
+  const handleLogout = () => {
+    clearAuth();
+    window.location.reload();
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600 font-bold">
@@ -198,7 +205,7 @@ const App: React.FC = () => {
           <NavItem active={view === 'settings'} onClick={() => setView('settings')} icon={<Settings className="w-5 h-5" />} label="הגדרות" />
         </div>
 
-        <div className="mt-auto pt-6 border-t border-white/10">
+        <div className="mt-auto pt-6 border-t border-white/10 space-y-4">
           <div className="flex items-center gap-4 bg-white/5 p-4 rounded-3xl border border-white/5">
             <div className="w-12 h-12 rounded-2xl bg-indigo-400 flex items-center justify-center text-indigo-950 font-black shrink-0 text-xl">
               {business.ownerName[0]}
@@ -208,6 +215,20 @@ const App: React.FC = () => {
               <p className="text-[10px] text-indigo-300 font-bold uppercase truncate tracking-wider">{business.name}</p>
             </div>
           </div>
+          {authProfile && (
+            <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-[11px] font-bold text-indigo-100">
+              <div className="truncate">מחובר כ‑{authProfile.label}</div>
+              <div className="text-indigo-300 mt-1">
+                {authProfile.type === 'google' ? 'Google' : 'Basic'}
+              </div>
+              <button
+                onClick={handleLogout}
+                className="mt-3 w-full text-xs font-black text-white bg-rose-500/80 hover:bg-rose-500 py-2 rounded-xl transition-all"
+              >
+                התנתקות
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 

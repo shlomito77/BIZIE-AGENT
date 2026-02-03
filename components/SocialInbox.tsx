@@ -162,6 +162,7 @@ const SocialInbox: React.FC<Props> = ({ messages, onUpdateMessages, onSyncData }
   }
 
   const unprocessedCount = messages.filter(m => !m.isProcessed).length;
+  const filteredMessages = messages.filter(m => activeFilter === 'all' ? true : !m.isProcessed);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 text-right">
@@ -177,44 +178,53 @@ const SocialInbox: React.FC<Props> = ({ messages, onUpdateMessages, onSyncData }
       </header>
 
       <div className="grid grid-cols-1 gap-5">
-        {messages.filter(m => activeFilter === 'all' ? true : !m.isProcessed).map((msg) => {
-          const style = getPlatformStyle(msg.platform);
-          const lastMsg = msg.chatHistory[msg.chatHistory.length - 1];
-          return (
-            <div key={msg.id} onClick={() => setActiveChatId(msg.id)} className={`bg-white p-7 rounded-[2.5rem] shadow-sm border-2 transition-all hover:border-indigo-200 cursor-pointer group relative overflow-hidden ${msg.isProcessed ? 'border-slate-50' : 'border-indigo-100 bg-indigo-50/5'}`}>
-              <div className="flex items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-6">
-                   <div className="relative shrink-0">
+        {filteredMessages.length > 0 ? (
+          filteredMessages.map((msg) => {
+            const style = getPlatformStyle(msg.platform);
+            const lastMsg = msg.chatHistory[msg.chatHistory.length - 1];
+            return (
+              <div key={msg.id} onClick={() => setActiveChatId(msg.id)} className={`bg-white p-7 rounded-[2.5rem] shadow-sm border-2 transition-all hover:border-indigo-200 cursor-pointer group relative overflow-hidden ${msg.isProcessed ? 'border-slate-50' : 'border-indigo-100 bg-indigo-50/5'}`}>
+                <div className="flex items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-center gap-6">
+                    <div className="relative shrink-0">
                       <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-100 border-2 border-white shadow-sm overflow-hidden group-hover:scale-105 transition-transform flex items-center justify-center font-black text-xl text-indigo-600">
-                         {msg.senderName[0]}
+                        {msg.senderName[0]}
                       </div>
                       <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full text-white shadow-lg ${style.color} group-hover:rotate-12 transition-transform`}>
-                         {style.icon}
+                        {style.icon}
                       </div>
-                   </div>
-                   <div className="space-y-1">
+                    </div>
+                    <div className="space-y-1">
                       <div className="flex items-center gap-3">
-                         <h4 className="font-black text-slate-900 text-xl">{msg.senderName}</h4>
-                         <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded-md tracking-widest"><Clock className="inline w-3 h-3 ml-1" /> {msg.timestamp.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <h4 className="font-black text-slate-900 text-xl">{msg.senderName}</h4>
+                        <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded-md tracking-widest"><Clock className="inline w-3 h-3 ml-1" /> {msg.timestamp.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                       <p className={`text-sm font-medium line-clamp-1 ${msg.isProcessed ? 'text-slate-400' : 'text-slate-700 font-bold'}`}>
-                         {lastMsg?.role === 'model' ? 'ביזי: ' : ''}{lastMsg?.text}
+                        {lastMsg?.role === 'model' ? 'ביזי: ' : ''}{lastMsg?.text}
                       </p>
-                   </div>
-                </div>
+                    </div>
+                  </div>
 
-                <div className="flex gap-4 items-center">
-                   {!msg.isProcessed && (
-                     <div className="w-3 h-3 bg-indigo-600 rounded-full animate-pulse shadow-[0_0_10px_rgba(79,70,229,0.5)]"></div>
-                   )}
-                   <div className="bg-slate-50 text-slate-300 p-4 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-lg transition-all duration-300">
+                  <div className="flex gap-4 items-center">
+                    {!msg.isProcessed && (
+                      <div className="w-3 h-3 bg-indigo-600 rounded-full animate-pulse shadow-[0_0_10px_rgba(79,70,229,0.5)]"></div>
+                    )}
+                    <div className="bg-slate-50 text-slate-300 p-4 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-lg transition-all duration-300">
                       <ArrowRight className="w-6 h-6 rotate-180" />
-                   </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <div className="bg-white p-10 rounded-[2.5rem] border border-dashed border-slate-200 text-center space-y-4">
+            <div className="text-slate-500 font-black text-lg">אין הודעות חדשות</div>
+            <p className="text-slate-400 text-sm font-bold">
+              כשתגיע הודעה חדשה – היא תופיע כאן מיד.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
