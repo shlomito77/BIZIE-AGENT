@@ -18,8 +18,8 @@ export function captureError(
   error: unknown,
   context?: Record<string, any>
 ) {
+  if (!process.env.SENTRY_DSN) return;
   init();
-  if (!Sentry.getCurrentHub().getClient()) return;
   if (context) {
     Sentry.withScope((scope) => {
       scope.setContext("request", context);
