@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../services/apiClient";
-import { clearAuth, hasAuth, setAuthCredentials } from "../services/auth";
+import { clearAuth, hasAuth, setBasicAuth, setGoogleAuth } from "../services/auth";
 
 interface Props {
   children: React.ReactNode;
@@ -11,6 +11,8 @@ const AuthGate: React.FC<Props> = ({ children }) => {
   const [error, setError] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const googleButtonRef = useRef<HTMLDivElement | null>(null);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
 
   const verify = async () => {
     setStatus("checking");
@@ -33,9 +35,60 @@ const AuthGate: React.FC<Props> = ({ children }) => {
     }
   }, []);
 
+  useEffect(() => {
+    if (!googleClientId) return;
+    let cancelled = false;
+    let attempts = 0;
+
+    const initGoogle = () => {
+      if (cancelled) return;
+      const google = (window as any).google;
+      if (!google?.accounts?.id || !googleButtonRef.current) {
+        attempts += 1;
+        if (attempts < 10) {
+          setTimeout(initGoogle, 400);
+        }
+        return;
+      }
+
+      if (googleButtonRef.current.childNodes.length > 0) return;
+
+      google.accounts.id.initialize({
+        client_id: googleClientId,
+        callback: async (response: any) => {
+          try {
+            await apiFetch<{ ok: boolean }>("/api/auth/google", {
+              method: "POST",
+              body: JSON.stringify({ idToken: response.credential }),
+            });
+            setGoogleAuth(response.credential);
+            await verify();
+          } catch (err: any) {
+            clearAuth();
+            setError(err?.message || "Google Sign-In נכשל.");
+            setStatus("unauth");
+          }
+        },
+      });
+
+      google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline",
+        size: "large",
+        text: "continue_with",
+        shape: "pill",
+        width: "320",
+      });
+    };
+
+    initGoogle();
+    return () => {
+      cancelled = true;
+    };
+  }, [googleClientId]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setAuthCredentials(username, password);
+    setBasicAuth(username, password);
     await verify();
   };
 
@@ -87,6 +140,14 @@ const AuthGate: React.FC<Props> = ({ children }) => {
             {status === "checking" ? "בודק..." : "כניסה"}
           </button>
         </form>
+        {googleClientId && (
+          <>
+            <div className="text-center text-slate-400 text-xs font-black">או</div>
+            <div className="flex justify-center">
+              <div ref={googleButtonRef} />
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

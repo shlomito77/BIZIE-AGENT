@@ -1,14 +1,20 @@
-const AUTH_KEY = "bizie_basic_auth";
+const AUTH_KEY = "bizie_auth_header";
 
-export function setAuthCredentials(username: string, password: string) {
+function setAuthHeader(value: string) {
+  sessionStorage.setItem(AUTH_KEY, value);
+}
+
+export function setBasicAuth(username: string, password: string) {
   const encoded = btoa(`${username}:${password}`);
-  sessionStorage.setItem(AUTH_KEY, encoded);
+  setAuthHeader(`Basic ${encoded}`);
+}
+
+export function setGoogleAuth(idToken: string) {
+  setAuthHeader(`Bearer ${idToken}`);
 }
 
 export function getAuthHeader(): string | null {
-  const encoded = sessionStorage.getItem(AUTH_KEY);
-  if (!encoded) return null;
-  return `Basic ${encoded}`;
+  return sessionStorage.getItem(AUTH_KEY);
 }
 
 export function hasAuth(): boolean {

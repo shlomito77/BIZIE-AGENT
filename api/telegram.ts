@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { applyCors, handleOptions, requireTelegramSecret } from "./_auth";
 import { generateAssistantReply } from "./_ai";
+import { enforceRateLimit } from "./_ratelimit";
+import { captureError } from "./_monitoring";
 import {
   getBusiness,
   getSocialThreadByExternal,
@@ -74,6 +76,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
+  if (
+    !(await enforceRateLimit({
+      req,
+      res,
+      key: `telegram:${chatId}`,
+      limit: 30,
+      windowMs: 60_000,
+    }))
+  ) {
+    return;
+  }
+
   const senderName =
     [message.from?.first_name, message.from?.last_name].filter(Boolean).join(" ") ||
     message.from?.username ||
@@ -91,11 +105,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const nextHistory = [...history, userMsg];
 
   const business = await getBusiness();
-  const ai = await generateAssistantReply({
-    contents: toGeminiContents(nextHistory),
-    business,
-    mode: "standard",
-  });
+  let ai;
+  try {
+    ai = await generateAssistantReply({
+      contents: toGeminiContents(nextHistory),
+      business,
+      mode: "standard",
+    });
+  } catch (err: any) {
+    captureError(err, { route: "telegram" });
+    res.status(500).json({ error: "Failed to generate response" });
+    return;
+  }
 
   const botMsg: ChatMessage = {
     role: "model",

@@ -2,7 +2,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import fs from "node:fs";
 import path from "node:path";
 import { GoogleGenAI } from "@google/genai";
-import { applyCors, handleOptions, requireBasicAuth } from "./_auth";
+import { applyCors, handleOptions, requireAuth } from "./_auth";
+import { enforceRateLimit } from "./_ratelimit";
+import { captureError } from "./_monitoring";
 
 type Role = "user" | "model";
 type HistoryItem = { role: Role; parts: Array<{ text: string }> };
@@ -458,9 +460,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (handleOptions(req, res)) return;
     if (!applyCors(req, res)) return;
-    if (!requireBasicAuth(req, res)) return;
+    if (!(await requireAuth(req, res))) return;
     if (req.method !== "POST") {
       res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    if (
+      !(await enforceRateLimit({
+        req,
+        res,
+        key: "chat",
+        limit: 60,
+        windowMs: 60_000,
+      }))
+    ) {
       return;
     }
 
@@ -494,6 +507,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sessionId,
     });
   } catch (err: any) {
+    captureError(err, { route: "chat" });
     return res.status(500).json({
       reply: "סליחה, הייתה תקלה רגעית. נסה שוב בעוד רגע 🙏",
       mode: "error",

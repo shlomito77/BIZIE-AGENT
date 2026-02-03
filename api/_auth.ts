@@ -53,7 +53,58 @@ export function handleOptions(req: VercelRequest, res: VercelResponse): boolean 
   return true;
 }
 
-export function requireBasicAuth(
+function parseAllowedEmails(): string[] {
+  return (process.env.ALLOWED_ADMIN_EMAILS || "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+async function verifyGoogleIdToken(idToken: string): Promise<{
+  email: string;
+}> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  if (!clientId) {
+    throw new Error("GOOGLE_CLIENT_ID not configured");
+  }
+
+  const response = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(
+      idToken
+    )}`
+  );
+  if (!response.ok) {
+    throw new Error("Invalid Google token");
+  }
+  const payload = (await response.json()) as {
+    aud?: string;
+    email?: string;
+    email_verified?: string;
+    exp?: string;
+  };
+
+  if (!payload.email || payload.email_verified !== "true") {
+    throw new Error("Google email not verified");
+  }
+  if (payload.aud !== clientId) {
+    throw new Error("Google audience mismatch");
+  }
+  if (payload.exp && Number(payload.exp) * 1000 < Date.now()) {
+    throw new Error("Google token expired");
+  }
+
+  const allowlist = parseAllowedEmails();
+  if (allowlist.length === 0) {
+    throw new Error("ALLOWED_ADMIN_EMAILS not configured");
+  }
+  if (!allowlist.includes(payload.email.toLowerCase())) {
+    throw new Error("Google email not allowed");
+  }
+
+  return { email: payload.email };
+}
+
+function requireBasicAuth(
   req: VercelRequest,
   res: VercelResponse
 ): boolean {
@@ -83,6 +134,35 @@ export function requireBasicAuth(
   }
 
   return true;
+}
+
+export async function requireAuth(
+  req: VercelRequest,
+  res: VercelResponse
+): Promise<boolean> {
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Basic ")) {
+    return requireBasicAuth(req, res);
+  }
+  if (header.startsWith("Bearer ")) {
+    const token = header.slice("Bearer ".length).trim();
+    try {
+      await verifyGoogleIdToken(token);
+      return true;
+    } catch (err: any) {
+      res.status(401).json({ error: err?.message || "Unauthorized" });
+      return false;
+    }
+  }
+  res.setHeader("WWW-Authenticate", "Basic");
+  res.status(401).json({ error: "Unauthorized" });
+  return false;
+}
+
+export async function verifyGoogleAuthToken(
+  idToken: string
+): Promise<{ email: string }> {
+  return verifyGoogleIdToken(idToken);
 }
 
 export function getClientIp(req: VercelRequest): string {
