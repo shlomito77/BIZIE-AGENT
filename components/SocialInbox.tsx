@@ -1,19 +1,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { SocialMessage, Customer, ChatMessage, BusinessInfo } from '../types';
-import { Instagram, Facebook, MessageCircle, Send, Loader2, Clock, ArrowRight, Activity, Smartphone, Phone, CheckCircle2 } from 'lucide-react';
-import { gemini } from '../services/gemini';
-import { calendarService } from '../services/googleCalendar';
+import { SocialMessage } from '../types';
+import { Instagram, Facebook, MessageCircle, Send, Loader2, Clock, ArrowRight, Activity } from 'lucide-react';
+import { sendSocialMessage } from '../services/dataApi';
 
 interface Props {
   messages: SocialMessage[];
-  business: BusinessInfo;
-  onConvertLead: (customer: Partial<Customer>) => void;
   onUpdateMessages: (msgs: SocialMessage[]) => void;
-  onCancelAppointment: (phone: string) => void;
+  onSyncData?: () => void;
 }
 
-const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpdateMessages, onCancelAppointment }) => {
+const SocialInbox: React.FC<Props> = ({ messages, onUpdateMessages, onSyncData }) => {
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'unprocessed'>('unprocessed');
   const [isLoading, setIsLoading] = useState(false);
@@ -34,6 +31,7 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
     // Update local state first (User message)
     const updatedMessages = [...messages];
     const chatIndex = updatedMessages.findIndex(m => m.id === activeChatId);
+    if (chatIndex === -1) return;
     updatedMessages[chatIndex] = {
       ...updatedMessages[chatIndex],
       chatHistory: [...updatedMessages[chatIndex].chatHistory, { role: 'user', text: textToSend, timestamp: new Date() }]
@@ -43,60 +41,21 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
     setIsLoading(true);
 
     try {
-      const currentChat = updatedMessages[chatIndex];
-      const historyForGemini = currentChat.chatHistory.map(h => ({
-        role: h.role,
-        parts: [{ text: h.text }]
-      }));
+      setActionStatus("מייצרת תשובה...");
+      const result = await sendSocialMessage({
+        threadId: activeChatId,
+        message: textToSend,
+      });
 
-      // 1. Unified Logic Processing (Same as ChatWidget)
-      // Fix: Removed the extra platform argument as it's not supported by GeminiService.sendMessage
-      const actionResponse = await gemini.sendMessage(historyForGemini, business);
-      
-      if (actionResponse.functionCalls && actionResponse.functionCalls.length > 0) {
-        const toolResultsParts: any[] = [];
-        historyForGemini.push(actionResponse.candidates[0].content);
-        
-        for (const fc of actionResponse.functionCalls) {
-          setActionStatus(`מבצעת: ${fc.name === 'book_appointment' ? 'קביעת תור' : fc.name === 'cancel_appointment' ? 'ביטול תור' : 'בדיקת זמינות'}...`);
-          let result: any = { status: "ok" };
-          
-          if (fc.name === 'check_availability') {
-            const res = await calendarService.checkAvailability((fc.args as any).dateTime, 60);
-            result = { available: res };
-          } else if (fc.name === 'book_appointment') {
-            onConvertLead({ 
-              name: (fc.args as any).customerName, 
-              phone: (fc.args as any).customerPhone, 
-              source: currentChat.platform,
-              notes: `נקבע דרך ${currentChat.platform}`
-            });
-            result = { success: true };
-          } else if (fc.name === 'cancel_appointment') {
-            onCancelAppointment((fc.args as any).customerPhone);
-            result = { cancelled: true };
-          }
-          toolResultsParts.push({ functionResponse: { id: fc.id, name: fc.name, response: { result } } });
-        }
-        historyForGemini.push({ role: 'user', parts: toolResultsParts });
+      const latestMsgs = [...updatedMessages];
+      const idx = latestMsgs.findIndex(m => m.id === result.thread.id);
+      if (idx !== -1) {
+        latestMsgs[idx] = result.thread;
       }
+      onUpdateMessages(latestMsgs);
 
-      // 2. Stream Response (Same behavior across platforms)
-      setActionStatus(null);
-      let fullResponseText = "";
-      // Fix: Removed the extra platform argument as it's not supported by GeminiService.sendMessageStream
-      const stream = gemini.sendMessageStream(historyForGemini, business);
-      
-      const botMsgTimestamp = new Date();
-      updatedMessages[chatIndex].chatHistory.push({ role: 'model', text: '', timestamp: botMsgTimestamp });
-      onUpdateMessages([...updatedMessages]);
-
-      for await (const chunk of stream) {
-        fullResponseText += chunk;
-        const latestMsgs = [...updatedMessages];
-        const lastIdx = latestMsgs[chatIndex].chatHistory.length - 1;
-        latestMsgs[chatIndex].chatHistory[lastIdx] = { role: 'model', text: fullResponseText, timestamp: botMsgTimestamp };
-        onUpdateMessages(latestMsgs);
+      if (result.actions?.length && onSyncData) {
+        onSyncData();
       }
 
     } catch (e: any) {
@@ -125,6 +84,7 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
       case 'facebook': return { icon: <Facebook className="w-5 h-5" />, color: 'bg-blue-600', text: 'text-blue-600' };
       case 'tiktok': return { icon: <div className="font-black text-[10px]">T</div>, color: 'bg-black', text: 'text-slate-900' };
       case 'whatsapp': return { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-green-500', text: 'text-green-600' };
+      case 'telegram': return { icon: <Send className="w-5 h-5" />, color: 'bg-sky-500', text: 'text-sky-600' };
       default: return { icon: <MessageCircle className="w-5 h-5" />, color: 'bg-slate-500', text: 'text-slate-500' };
     }
   };
@@ -202,6 +162,7 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
   }
 
   const unprocessedCount = messages.filter(m => !m.isProcessed).length;
+  const filteredMessages = messages.filter(m => activeFilter === 'all' ? true : !m.isProcessed);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500 text-right">
@@ -217,44 +178,53 @@ const SocialInbox: React.FC<Props> = ({ messages, business, onConvertLead, onUpd
       </header>
 
       <div className="grid grid-cols-1 gap-5">
-        {messages.filter(m => activeFilter === 'all' ? true : !m.isProcessed).map((msg) => {
-          const style = getPlatformStyle(msg.platform);
-          const lastMsg = msg.chatHistory[msg.chatHistory.length - 1];
-          return (
-            <div key={msg.id} onClick={() => setActiveChatId(msg.id)} className={`bg-white p-7 rounded-[2.5rem] shadow-sm border-2 transition-all hover:border-indigo-200 cursor-pointer group relative overflow-hidden ${msg.isProcessed ? 'border-slate-50' : 'border-indigo-100 bg-indigo-50/5'}`}>
-              <div className="flex items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-6">
-                   <div className="relative shrink-0">
+        {filteredMessages.length > 0 ? (
+          filteredMessages.map((msg) => {
+            const style = getPlatformStyle(msg.platform);
+            const lastMsg = msg.chatHistory[msg.chatHistory.length - 1];
+            return (
+              <div key={msg.id} onClick={() => setActiveChatId(msg.id)} className={`bg-white p-7 rounded-[2.5rem] shadow-sm border-2 transition-all hover:border-indigo-200 cursor-pointer group relative overflow-hidden ${msg.isProcessed ? 'border-slate-50' : 'border-indigo-100 bg-indigo-50/5'}`}>
+                <div className="flex items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-center gap-6">
+                    <div className="relative shrink-0">
                       <div className="w-16 h-16 rounded-[1.5rem] bg-indigo-100 border-2 border-white shadow-sm overflow-hidden group-hover:scale-105 transition-transform flex items-center justify-center font-black text-xl text-indigo-600">
-                         {msg.senderName[0]}
+                        {msg.senderName[0]}
                       </div>
                       <div className={`absolute -bottom-1 -right-1 p-1.5 rounded-full text-white shadow-lg ${style.color} group-hover:rotate-12 transition-transform`}>
-                         {style.icon}
+                        {style.icon}
                       </div>
-                   </div>
-                   <div className="space-y-1">
+                    </div>
+                    <div className="space-y-1">
                       <div className="flex items-center gap-3">
-                         <h4 className="font-black text-slate-900 text-xl">{msg.senderName}</h4>
-                         <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded-md tracking-widest"><Clock className="inline w-3 h-3 ml-1" /> {msg.timestamp.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span>
+                        <h4 className="font-black text-slate-900 text-xl">{msg.senderName}</h4>
+                        <span className="text-[10px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-1 rounded-md tracking-widest"><Clock className="inline w-3 h-3 ml-1" /> {msg.timestamp.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                       <p className={`text-sm font-medium line-clamp-1 ${msg.isProcessed ? 'text-slate-400' : 'text-slate-700 font-bold'}`}>
-                         {lastMsg?.role === 'model' ? 'ביזי: ' : ''}{lastMsg?.text}
+                        {lastMsg?.role === 'model' ? 'ביזי: ' : ''}{lastMsg?.text}
                       </p>
-                   </div>
-                </div>
+                    </div>
+                  </div>
 
-                <div className="flex gap-4 items-center">
-                   {!msg.isProcessed && (
-                     <div className="w-3 h-3 bg-indigo-600 rounded-full animate-pulse shadow-[0_0_10px_rgba(79,70,229,0.5)]"></div>
-                   )}
-                   <div className="bg-slate-50 text-slate-300 p-4 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-lg transition-all duration-300">
+                  <div className="flex gap-4 items-center">
+                    {!msg.isProcessed && (
+                      <div className="w-3 h-3 bg-indigo-600 rounded-full animate-pulse shadow-[0_0_10px_rgba(79,70,229,0.5)]"></div>
+                    )}
+                    <div className="bg-slate-50 text-slate-300 p-4 rounded-2xl group-hover:bg-indigo-600 group-hover:text-white group-hover:shadow-lg transition-all duration-300">
                       <ArrowRight className="w-6 h-6 rotate-180" />
-                   </div>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <div className="bg-white p-10 rounded-[2.5rem] border border-dashed border-slate-200 text-center space-y-4">
+            <div className="text-slate-500 font-black text-lg">אין הודעות חדשות</div>
+            <p className="text-slate-400 text-sm font-bold">
+              כשתגיע הודעה חדשה – היא תופיע כאן מיד.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import fs from "node:fs";
-import path from "node:path";
 import { GoogleGenAI } from "@google/genai";
+import { applyCors, handleOptions, requireAuth } from "./_auth";
+import { enforceRateLimit } from "./_ratelimit";
+import { captureError } from "./_monitoring";
+import { getBusiness, getConversationFlow } from "./_store";
 
 type Role = "user" | "model";
 type HistoryItem = { role: Role; parts: Array<{ text: string }> };
@@ -10,6 +12,7 @@ type Business = {
   name?: string;
   phone?: string;
   address?: string;
+  openingHours?: string;
   hours?: string;
   services?: Array<{ id?: string; name: string; price?: number; duration?: number; description?: string }>;
   policies?: string;
@@ -20,7 +23,6 @@ type ChatBody = {
   bubble?: string; // when user clicks a suggested bubble
   sessionId?: string; // client-provided stable id
   history?: HistoryItem[];
-  business?: Business;
 };
 
 type FlowState = {
@@ -47,37 +49,8 @@ type FlowConfig = {
 
 const memStore = new Map<string, FlowState>(); // V1 in-memory store
 
-function safeJsonParse<T>(raw: string): T | null {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
-}
-
 function normalize(s: string) {
   return (s || "").trim().toLowerCase();
-}
-
-function loadJson<T>(p: string): T | null {
-  try {
-    if (!fs.existsSync(p)) return null;
-    const raw = fs.readFileSync(p, "utf8");
-    return safeJsonParse<T>(raw);
-  } catch {
-    return null;
-  }
-}
-
-function loadBusinessFromFile(): Business | undefined {
-  const p = path.join(process.cwd(), "data", "business.json");
-  const parsed = loadJson<Business>(p);
-  return parsed && typeof parsed === "object" ? parsed : undefined;
-}
-
-function loadFlowFromFile(): FlowConfig | null {
-  const p = path.join(process.cwd(), "data", "conversation.flow.json");
-  return loadJson<FlowConfig>(p);
 }
 
 function interpolate(template: string, ctx: Record<string, any>) {
@@ -90,6 +63,7 @@ function interpolate(template: string, ctx: Record<string, any>) {
 /** Flow-first answers for FAQs (hours/address/phone/services/policies) */
 function flowFirstAnswer(msg: string, business?: Business) {
   const m = normalize(msg);
+  const hours = business?.openingHours || business?.hours;
 
   const isHours = m.includes("שעות") || m.includes("פתוח") || m.includes("מתי אתם פתוחים") || m.includes("מתי פתוח");
   const isAddress = m.includes("כתובת") || m.includes("איפה") || m.includes("מיקום") || m.includes("איך מגיעים");
@@ -99,7 +73,7 @@ function flowFirstAnswer(msg: string, business?: Business) {
   const isServices = m.includes("טיפולים") || m.includes("סוגי") || m.includes("עיסוי") || m.includes("שירותים");
   const isCancel = m.includes("לבטל") || m.includes("ביטול") || m.includes("דחייה") || m.includes("לשנות תור");
 
-  if (isHours && business?.hours) return `שעות הפעילות שלנו:\n${business.hours}`;
+  if (isHours && hours) return `שעות הפעילות שלנו:\n${hours}`;
   if (isAddress && business?.address) return `המיקום שלנו:\n${business.address}`;
   if (isPhone && business?.phone) return `אפשר ליצור קשר כאן:\n${business.phone}`;
   if (isCancel && business?.policies) return `מדיניות ביטולים/שינויים:\n${business.policies}`;
@@ -166,7 +140,7 @@ async function aiFallback(message: string, business: Business) {
 
   const context = `
 פרטי העסק:
-שעות: ${business.hours || ""}
+שעות: ${business.openingHours || business.hours || ""}
 כתובת: ${business.address || ""}
 טלפון: ${business.phone || ""}
 מדיניות: ${business.policies || ""}
@@ -455,7 +429,24 @@ async function runFlowTurn(params: {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+    if (handleOptions(req, res)) return;
+    if (!applyCors(req, res)) return;
+    if (!(await requireAuth(req, res))) return;
+    if (req.method !== "POST") {
+      res.status(405).json({ error: "Method Not Allowed" });
+      return;
+    }
+    if (
+      !(await enforceRateLimit({
+        req,
+        res,
+        key: "chat",
+        limit: 60,
+        windowMs: 60_000,
+      }))
+    ) {
+      return;
+    }
 
     const body = (req.body || {}) as ChatBody;
     const sessionId = pickSessionId(req, body);
@@ -463,8 +454,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const inputText = (body.bubble || body.message || "").toString();
     if (!inputText.trim()) return res.status(400).json({ error: "Missing message/bubble" });
 
-    const business = body.business ?? loadBusinessFromFile() ?? {};
-    const flow = loadFlowFromFile();
+    const business = await getBusiness();
+    const flow = (await getConversationFlow()) as FlowConfig | null;
 
     // If flow missing, fallback to old behavior
     if (!flow) {
@@ -487,10 +478,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sessionId,
     });
   } catch (err: any) {
-    return res.status(200).json({
+    captureError(err, { route: "chat" });
+    return res.status(500).json({
       reply: "סליחה, הייתה תקלה רגעית. נסה שוב בעוד רגע 🙏",
       mode: "error",
-      debug: err?.message || String(err),
     });
   }
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Calendar, MessageSquare, Settings, UserCheck, Inbox, Zap } from 'lucide-react';
-import { BusinessInfo, Appointment, Customer, Service, SocialMessage, MOCK_CUSTOMERS, MOCK_SOCIAL_MESSAGES } from './types';
+import { BusinessInfo, Appointment, Customer, Service, SocialMessage } from './types';
 import Dashboard from './components/Dashboard';
 import ChatWidget from './components/ChatWidget';
 import SettingsPanel from './components/SettingsPanel';
@@ -8,8 +8,8 @@ import AppointmentsList from './components/AppointmentsList';
 import CustomerCRM from './components/CustomerCRM';
 import SocialInbox from './components/SocialInbox';
 import { calendarService } from './services/googleCalendar';
-
-const SERVICES_STORAGE_KEY = 'bizie_services_v1';
+import { createAppointment, fetchAppointments, fetchBusiness, fetchCustomers, fetchSocialThreads, saveCustomer, updateBusiness, cancelAppointment as cancelAppointmentApi } from './services/dataApi';
+import { clearAuth, getAuthProfile } from './services/auth';
 
 const INITIAL_SERVICES: Service[] = [
   { id: 'm1', name: 'עיסוי שוודי קלאסי', description: 'עיסוי שחרור ודרמטי.', duration: 60, price: 280 },
@@ -18,88 +18,127 @@ const INITIAL_SERVICES: Service[] = [
   { id: 'f1', name: 'טיפול פנים קלאסי', description: 'ניקוי, פילינג והזנה לעור הפנים.', duration: 60, price: 300 },
   { id: 'p1', name: 'חבילת VIP זוגית', description: 'חבילה זוגית הכוללת עיסוי, יין וקינוח ושרותי מלון.', duration: 120, price: 850 },
 ];
-
-function loadServices(): Service[] {
-  try {
-    const raw = localStorage.getItem(SERVICES_STORAGE_KEY);
-    if (!raw) return INITIAL_SERVICES;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return INITIAL_SERVICES;
-    const ok = parsed.every((s: any) => s && typeof s.id === 'string' && typeof s.name === 'string');
-    return ok ? (parsed as Service[]) : INITIAL_SERVICES;
-  } catch {
-    return INITIAL_SERVICES;
-  }
-}
-
-function saveServices(services: Service[]) {
-  localStorage.setItem(SERVICES_STORAGE_KEY, JSON.stringify(services));
-}
+const DEFAULT_BUSINESS: BusinessInfo = {
+  name: "ספא ביזנס פרו",
+  ownerName: "ישראל ישראלי",
+  category: "קוסמטיקה וטיפולי גוף",
+  address: "הרצל 12, תל אביב",
+  phone: "050-1234567",
+  services: INITIAL_SERVICES,
+  openingHours: "א'-ה': 09:00-20:00, ו': 09:00-14:00",
+  isCalendarConnected: false,
+  aiModel: 'gemini-flash-lite-latest',
+  policies: "",
+  calendarMode: "virtual",
+  googleClientId: ""
+};
 
 const App: React.FC = () => {
   const [view, setView] = useState<'dashboard' | 'chat' | 'appointments' | 'crm' | 'settings' | 'inbox'>('dashboard');
 
-  const [business, setBusiness] = useState<BusinessInfo>(() => ({
-    name: "ספא ביזנס פרו",
-    ownerName: "ישראל ישראלי",
-    category: "קוסמטיקה וטיפולי גוף",
-    address: "הרצל 12, תל אביב",
-    phone: "050-1234567",
-    services: loadServices(),
-    openingHours: "א'-ה': 09:00-20:00, ו': 09:00-14:00",
-    isCalendarConnected: localStorage.getItem('bizie_calendar_mode') === 'real',
-    aiModel: 'gemini-flash-lite-latest'
-  }));
+  const [business, setBusiness] = useState<BusinessInfo>(DEFAULT_BUSINESS);
 
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [socialMessages, setSocialMessages] = useState<SocialMessage[]>(MOCK_SOCIAL_MESSAGES);
+  const [socialMessages, setSocialMessages] = useState<SocialMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const authProfile = getAuthProfile();
 
   useEffect(() => {
-    const savedApps = localStorage.getItem('bizie_virtual_appointments');
-    if (savedApps) {
-      setAppointments(JSON.parse(savedApps).map((a: any) => ({ ...a, startTime: new Date(a.startTime) })));
-    }
+    const loadAll = async () => {
+      try {
+        setIsLoading(true);
+        const [biz, apps, custs, socials] = await Promise.all([
+          fetchBusiness(),
+          fetchAppointments(),
+          fetchCustomers(),
+          fetchSocialThreads(),
+        ]);
+        setBusiness(biz);
+        setAppointments(apps);
+        setCustomers(custs);
+        setSocialMessages(socials);
+        setLoadError(null);
+      } catch (err: any) {
+        console.error(err);
+        setLoadError('שגיאת טעינה. בדוק חיבור או הרשאות.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    const savedCustomers = localStorage.getItem('bizie_customers');
-    if (savedCustomers) {
-      setCustomers(JSON.parse(savedCustomers).map((c: any) => ({
-        ...c,
-        lastVisit: new Date(c.lastVisit),
-        joinDate: new Date(c.joinDate || Date.now())
-      })));
-    } else {
-      setCustomers(MOCK_CUSTOMERS);
-      localStorage.setItem('bizie_customers', JSON.stringify(MOCK_CUSTOMERS));
-    }
+    loadAll();
   }, []);
 
-  const handleCancelAppointment = (idOrPhone: string) => {
-    setAppointments(prev => {
-      const updated = prev.map(a => (a.id === idOrPhone || a.customerPhone === idOrPhone) ? { ...a, status: 'cancelled' as const } : a);
-      localStorage.setItem('bizie_virtual_appointments', JSON.stringify(updated));
-      return updated;
+  useEffect(() => {
+    if (business.googleClientId) {
+      calendarService.setClientId(business.googleClientId);
+    }
+    if (business.calendarMode) {
+      calendarService.setMode(business.calendarMode);
+    }
+  }, [business.googleClientId, business.calendarMode]);
+
+  const refreshAll = async () => {
+    const [apps, custs, socials] = await Promise.all([
+      fetchAppointments(),
+      fetchCustomers(),
+      fetchSocialThreads(),
+    ]);
+    setAppointments(apps);
+    setCustomers(custs);
+    setSocialMessages(socials);
+  };
+
+  const handleCancelAppointment = async (idOrPhone: string) => {
+    const byId = appointments.some(a => a.id === idOrPhone);
+    await cancelAppointmentApi({
+      id: byId ? idOrPhone : undefined,
+      customerPhone: byId ? undefined : idOrPhone
     });
+    setAppointments(prev =>
+      prev.map(a => (a.id === idOrPhone || a.customerPhone === idOrPhone) ? { ...a, status: 'cancelled' as const } : a)
+    );
   };
 
   const handleBookAppointment = async (appData: Omit<Appointment, 'id'>, source: 'ai' | 'manual' = 'ai') => {
-    const newId = Math.random().toString(36).substr(2, 9);
-    const newApp: Appointment = { ...appData, id: newId };
-
     const bookedService = business.services.find(s => s.id === appData.serviceId);
     const servicePrice = bookedService?.price || 0;
+    const created = await createAppointment({ ...appData, status: appData.status || 'confirmed' });
+    setAppointments(prev => [created, ...prev]);
 
-    setAppointments(prev => {
-      const updated = [...prev, newApp];
-      localStorage.setItem('bizie_virtual_appointments', JSON.stringify(updated));
-      return updated;
-    });
+    const existing = customers.find(c => c.phone === appData.customerPhone);
+    const updatedCustomer: Customer = existing
+      ? {
+          ...existing,
+          name: appData.customerName || existing.name,
+          lastVisit: new Date(),
+          visitsCount: existing.visitsCount + 1,
+          totalSpent: existing.totalSpent + servicePrice
+        }
+      : {
+          id: Math.random().toString(36).substr(2, 9),
+          name: appData.customerName,
+          phone: appData.customerPhone,
+          email: '',
+          joinDate: new Date(),
+          lastVisit: new Date(),
+          visitsCount: 1,
+          totalSpent: servicePrice,
+          notes: 'נוצר אוטומטית',
+          preferences: source === 'ai' ? ['נקבע ע"י ביזי'] : [],
+          source: (source as any) || 'manual',
+          marketingConsent: false
+        };
 
-    upsertCustomer({
-      name: appData.customerName,
-      phone: appData.customerPhone,
-      source,
-      totalSpent: servicePrice
+    const saved = await saveCustomer(updatedCustomer);
+    setCustomers(prev => {
+      const idx = prev.findIndex(c => c.phone === saved.phone);
+      if (idx === -1) return [...prev, saved];
+      const next = [...prev];
+      next[idx] = saved;
+      return next;
     });
 
     if (calendarService.getMode() === 'real' && calendarService.isConnected()) {
@@ -112,77 +151,52 @@ const App: React.FC = () => {
     }
   };
 
-  const upsertCustomer = (customerData: Partial<Customer>) => {
-    const { name, phone, totalSpent = 0, source = 'manual', email = '' } = customerData;
-    if (!name || !phone) return;
-
+  const handleUpdateCustomer = async (updatedCustomer: Customer) => {
+    const saved = await saveCustomer(updatedCustomer);
     setCustomers(prev => {
-      let updatedList: Customer[];
-      const existingIndex = prev.findIndex(c => c.phone === phone);
-
-      if (existingIndex > -1) {
-        const existing = prev[existingIndex];
-        const updated = {
-          ...existing,
-          name: name || existing.name,
-          email: email || existing.email,
-          lastVisit: new Date(),
-          visitsCount: existing.visitsCount + 1,
-          totalSpent: existing.totalSpent + totalSpent,
-          notes: customerData.notes ? `${existing.notes}\n${customerData.notes}` : existing.notes
-        };
-        updatedList = [...prev];
-        updatedList[existingIndex] = updated;
-      } else {
-        const newCustomer: Customer = {
-          id: Math.random().toString(36).substr(2, 9),
-          name,
-          phone,
-          email,
-          joinDate: new Date(),
-          lastVisit: new Date(),
-          visitsCount: 1,
-          totalSpent,
-          notes: customerData.notes || 'נוצר אוטומטית',
-          preferences: source === 'ai' ? ['נקבע ע"י ביזי'] : [],
-          source: (source as any) || 'manual',
-          marketingConsent: customerData.marketingConsent || false
-        };
-        updatedList = [...prev, newCustomer];
-      }
-      localStorage.setItem('bizie_customers', JSON.stringify(updatedList));
-      return updatedList;
-    });
-  };
-
-  const handleUpdateCustomer = (updatedCustomer: Customer) => {
-    setCustomers(prev => {
-      const updated = prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c);
-      localStorage.setItem('bizie_customers', JSON.stringify(updated));
+      const updated = prev.map(c => c.id === saved.id ? saved : c);
       return updated;
     });
   };
 
-  const handleAddManualCustomer = (newC: Omit<Customer, 'id'>) => {
+  const handleAddManualCustomer = async (newC: Omit<Customer, 'id'>) => {
     const customer: Customer = {
       ...newC,
       id: Math.random().toString(36).substr(2, 9)
     };
-    setCustomers(prev => {
-      const updated = [...prev, customer];
-      localStorage.setItem('bizie_customers', JSON.stringify(updated));
-      return updated;
-    });
+    const saved = await saveCustomer(customer);
+    setCustomers(prev => [...prev, saved]);
   };
 
   const connectCalendar = () => {
     setBusiness(prev => ({ ...prev, isCalendarConnected: true, lastSyncTime: new Date() }));
   };
 
-  const handleUpdateBusiness = (info: BusinessInfo) => {
-    saveServices(info.services);
-    setBusiness(info);
+  const handleUpdateBusiness = async (info: BusinessInfo) => {
+    const updated = await updateBusiness(info);
+    setBusiness(updated);
   };
+
+  const handleLogout = () => {
+    clearAuth();
+    window.location.reload();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-600 font-bold">
+        טוען נתונים...
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 text-rose-600 font-bold">
+        {loadError}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-assistant" dir="rtl">
@@ -203,7 +217,7 @@ const App: React.FC = () => {
           <NavItem active={view === 'settings'} onClick={() => setView('settings')} icon={<Settings className="w-5 h-5" />} label="הגדרות" />
         </div>
 
-        <div className="mt-auto pt-6 border-t border-white/10">
+        <div className="mt-auto pt-6 border-t border-white/10 space-y-4">
           <div className="flex items-center gap-4 bg-white/5 p-4 rounded-3xl border border-white/5">
             <div className="w-12 h-12 rounded-2xl bg-indigo-400 flex items-center justify-center text-indigo-950 font-black shrink-0 text-xl">
               {business.ownerName[0]}
@@ -213,13 +227,27 @@ const App: React.FC = () => {
               <p className="text-[10px] text-indigo-300 font-bold uppercase truncate tracking-wider">{business.name}</p>
             </div>
           </div>
+          {authProfile && (
+            <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-[11px] font-bold text-indigo-100">
+              <div className="truncate">מחובר כ‑{authProfile.label}</div>
+              <div className="text-indigo-300 mt-1">
+                {authProfile.type === 'google' ? 'Google' : 'Basic'}
+              </div>
+              <button
+                onClick={handleLogout}
+                className="mt-3 w-full text-xs font-black text-white bg-rose-500/80 hover:bg-rose-500 py-2 rounded-xl transition-all"
+              >
+                התנתקות
+              </button>
+            </div>
+          )}
         </div>
       </nav>
 
       <main className="flex-1 overflow-auto p-4 md:p-10 bg-slate-50">
         {view === 'dashboard' && <Dashboard business={business} appointments={appointments} onConnectCalendar={connectCalendar} />}
-        {view === 'inbox' && <SocialInbox messages={socialMessages} business={business} onConvertLead={upsertCustomer} onUpdateMessages={setSocialMessages} onCancelAppointment={handleCancelAppointment} />}
-        {view === 'chat' && <ChatWidget business={business} appointments={appointments} onBook={handleBookAppointment} onCancel={handleCancelAppointment} />}
+        {view === 'inbox' && <SocialInbox messages={socialMessages} onUpdateMessages={setSocialMessages} onSyncData={refreshAll} />}
+        {view === 'chat' && <ChatWidget business={business} onSyncData={refreshAll} />}
         {view === 'appointments' && <AppointmentsList appointments={appointments} services={business.services} onAddAppointment={(app) => handleBookAppointment(app, 'manual')} onCancelAppointment={handleCancelAppointment} />}
         {view === 'crm' && <CustomerCRM customers={customers} onAddCustomer={handleAddManualCustomer} onUpdateCustomer={handleUpdateCustomer} />}
         {view === 'settings' && <SettingsPanel business={business} onUpdate={handleUpdateBusiness} onConnectCalendar={connectCalendar} />}

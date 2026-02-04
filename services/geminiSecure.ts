@@ -5,6 +5,7 @@
  */
 
 import { BusinessInfo } from "../types";
+import { apiFetch } from "./apiClient";
 
 const API_ENDPOINT = '/api/gemini';
 
@@ -15,29 +16,21 @@ export class SecureGeminiService {
    */
   async sendMessage(contents: any[], business: BusinessInfo) {
     try {
-      const response = await fetch(API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+      const data = await apiFetch<{
+        text: string;
+        actions?: any[];
+      }>(API_ENDPOINT, {
+        method: "POST",
         body: JSON.stringify({
           contents,
-          business,
-          mode: 'standard'
+          mode: "standard",
         }),
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'API request failed');
-      }
-
-      const data = await response.json();
-      return data.response;
+      return data;
       
     } catch (error: any) {
       console.error('Secure API Error:', error);
-      throw new Error(error.message || 'שגיאה בשליחת הודעה ל-AI');
+      throw new Error(error.message || 'שגיםה בשליחת הודעה ל-AI');
     }
   }
 

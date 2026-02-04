@@ -55,13 +55,35 @@ Go to your Vercel dashboard:
 | Name | Value | Environment |
 |------|-------|-------------|
 | `GEMINI_API_KEY` | Your Gemini API key | Production, Preview, Development |
-| `ALLOWED_ORIGIN` | Your domain (e.g., `https://bizie.vercel.app`) | Production, Preview, Development |
+| `POSTGRES_URL` | Postgres connection string | Production, Preview, Development |
+| `ALLOWED_ORIGINS` | Comma-separated domains (e.g., `https://bizie.vercel.app`) | Production, Preview, Development |
+| `BASIC_AUTH_USER` | Admin username | Production, Preview, Development |
+| `BASIC_AUTH_PASS` | Admin password | Production, Preview, Development |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | Production, Preview, Development |
+| `ALLOWED_ADMIN_EMAILS` | Comma-separated allowed emails | Production, Preview, Development |
+| `VITE_GOOGLE_CLIENT_ID` | Google OAuth client ID (frontend) | Production, Preview, Development |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token | Production, Preview, Development |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | Comma-separated Chat IDs | Production, Preview, Development |
+| `TELEGRAM_SECRET_TOKEN` | Telegram webhook secret token | Production, Preview, Development |
+| `UPSTASH_REDIS_REST_URL` | Upstash Redis REST URL | Production, Preview, Development |
+| `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis REST token | Production, Preview, Development |
+| `SENTRY_DSN` | Sentry DSN (backend) | Production, Preview, Development |
+| `VITE_SENTRY_DSN` | Sentry DSN (frontend) | Production, Preview, Development |
 
 ### Step 5: Redeploy
 
 ```bash
 vercel --prod
 ```
+
+## PWA Install (Optional)
+
+After deploy, open the app URL on device:
+
+- **Android (Chrome)**: Menu -> Install app
+- **iOS (Safari)**: Share -> Add to Home Screen
+
+PWA requires HTTPS and a public URL (Vercel provides both).
 
 ### Step 6: Update Frontend Code
 
@@ -115,12 +137,24 @@ This will:
 - Check API key has correct permissions
 
 ### CORS errors
-- Verify `ALLOWED_ORIGIN` matches your frontend URL
+- Verify `ALLOWED_ORIGINS` matches your frontend URL
 - Check `vercel.json` CORS configuration
 
+### Google Sign-In fails
+- Ensure `GOOGLE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` are the same
+- Add your domain to OAuth "Authorized JavaScript origins"
+- Populate `ALLOWED_ADMIN_EMAILS`
+
 ### Rate limit errors
-- Current limit: 20 requests/minute per IP
-- Increase in `api/gemini.ts` if needed
+- Current limit: 60 requests/minute per IP
+- Configure Upstash Redis for production rate limiting
+
+### Monitoring
+- Set `SENTRY_DSN` + `VITE_SENTRY_DSN` to enable error tracking
+
+### Backups
+- Call `GET /api/backup` with Basic Auth to export JSON
+- Example: `BIZIE_BACKUP_URL=https://your-app.vercel.app BASIC_AUTH_USER=... BASIC_AUTH_PASS=... ./tools/backup.sh`
 
 ## í³Š Monitoring
 
